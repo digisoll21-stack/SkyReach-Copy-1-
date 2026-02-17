@@ -1,23 +1,35 @@
-import { Injectable, Scope } from '@nestjs/common';
 
-@Injectable({ scope: Scope.REQUEST })
+import { Injectable, Scope } from '@nestjs/common';
+import { AsyncLocalStorage } from 'async_hooks';
+
+export interface TenantContext {
+  workspaceId: string | null;
+  userId: string | null;
+}
+
+@Injectable() // Singleton scope
 export class TenantContextService {
-  private workspaceId: string | null = null;
-  private userId: string | null = null;
+  private static readonly storage = new AsyncLocalStorage<TenantContext>();
+
+  runWithContext<T>(context: TenantContext, fn: () => T): T {
+    return TenantContextService.storage.run(context, fn);
+  }
 
   setWorkspaceId(id: string) {
-    this.workspaceId = id;
+    const context = TenantContextService.storage.getStore() || { workspaceId: null, userId: null };
+    context.workspaceId = id;
   }
 
   getWorkspaceId(): string | null {
-    return this.workspaceId;
+    return TenantContextService.storage.getStore()?.workspaceId || null;
   }
 
   setUserId(id: string) {
-    this.userId = id;
+    const context = TenantContextService.storage.getStore() || { workspaceId: null, userId: null };
+    context.userId = id;
   }
 
   getUserId(): string | null {
-    return this.userId;
+    return TenantContextService.storage.getStore()?.userId || null;
   }
 }

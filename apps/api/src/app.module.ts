@@ -3,6 +3,7 @@ import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule } from './config/config.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
@@ -23,6 +24,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { TenantContextService } from './common/context/tenant-context.service';
 import { HealthController } from './modules/health/health.controller';
 import { AppController } from './app.controller';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
@@ -35,6 +37,7 @@ import { AdminModule } from './modules/admin/admin.module';
     UsersModule,
     WorkspacesModule,
     InboxesModule,
+    AnalyticsModule,
     DomainsModule,
     QueuesModule,
     LeadsModule,
@@ -58,7 +61,7 @@ import { AdminModule } from './modules/admin/admin.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(RequestIdMiddleware)
+      .apply(TenantMiddleware, RequestIdMiddleware)
       .forRoutes('*');
   }
 }
