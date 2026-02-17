@@ -72,7 +72,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         break;
       } catch (err) {
         retries--;
-        this.logger.error(`DB Connection failed: ${err.message}. Retrying... (${retries} left)`);
+        const isPoolerError = err.message.includes('MaxClientsInSessionMode');
+        const advice = isPoolerError ? ' PRO-TIP: Add ?connection_limit=2 to your DATABASE_URL in Render.' : '';
+        this.logger.error(`DB Connection failed: ${err.message}.${advice} Retrying... (${retries} left)`);
         await new Promise(res => setTimeout(res, 5000));
       }
     }

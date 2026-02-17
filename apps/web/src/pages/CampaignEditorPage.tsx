@@ -206,8 +206,13 @@ const CampaignEditorPage: React.FC<{ theme: 'ethereal' | 'glass' }> = ({ theme }
 
   const fetchInboxes = async () => {
     try {
-      const { data } = await apiClient.get('/inboxes');
-      setInboxes(data || []);
+      const response = await apiClient.get('/inboxes');
+      // Handle both old array format (fallback) and new paginated format
+      if (Array.isArray(response.data)) {
+        setInboxes(response.data);
+      } else {
+        setInboxes(response.data.data || []);
+      }
     } catch (err) { console.error('Inboxes fetch failed'); }
   };
 
@@ -320,7 +325,7 @@ const CampaignEditorPage: React.FC<{ theme: 'ethereal' | 'glass' }> = ({ theme }
         await apiClient.put(`/campaigns/${id}`, campaignData);
       }
 
-      await apiClient.post(`/campaigns/${campaignId}/sequence`, { steps });
+      await apiClient.put(`/campaigns/${campaignId}/sequence`, { steps });
 
       // Ingest Manual Leads if any
       if (manualLeads.length > 0) {
