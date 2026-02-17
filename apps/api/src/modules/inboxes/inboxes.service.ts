@@ -40,7 +40,10 @@ export class InboxesService {
       dto.credentials.imapPort = 993;
     }
 
-    const isValid = await this.smtpAdapter.validateCredentials(dto.credentials);
+    // Skip validation if we already have an accessToken (fulfilling from OAuth flow)
+    const isValid = dto.credentials.accessToken
+      ? true
+      : await this.smtpAdapter.validateCredentials(dto.credentials);
 
     if (!isValid) {
       throw new BadRequestException(`Protocol Check Failed: Authentication rejected by ${dto.provider}. Verify App Password and Host configuration.`);

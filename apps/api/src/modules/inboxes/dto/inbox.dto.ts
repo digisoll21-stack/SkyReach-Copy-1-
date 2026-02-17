@@ -9,30 +9,48 @@ export enum InboxProvider {
 
 export class ProtocolCredentialsDto {
   @IsString()
-  smtpHost: string;
+  @IsOptional()
+  smtpHost?: string;
 
   @IsNumber()
-  smtpPort: number;
+  @IsOptional()
+  smtpPort?: number;
 
   @IsString()
   @IsOptional()
   smtpUser?: string;
 
   @IsString()
-  smtpPass: string;
+  @IsOptional()
+  smtpPass?: string;
 
   @IsString()
-  imapHost: string;
+  @IsOptional()
+  imapHost?: string;
 
   @IsNumber()
-  imapPort: number;
+  @IsOptional()
+  imapPort?: number;
 
   @IsString()
   @IsOptional()
   imapUser?: string;
 
   @IsString()
-  imapPass: string;
+  @IsOptional()
+  imapPass?: string;
+
+  @IsString()
+  @IsOptional()
+  accessToken?: string;
+
+  @IsString()
+  @IsOptional()
+  refreshToken?: string;
+
+  @IsNumber()
+  @IsOptional()
+  expiresAt?: number;
 }
 
 export class CreateInboxDto {

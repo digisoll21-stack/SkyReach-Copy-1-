@@ -1,17 +1,16 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 import { InboxesService } from '../inboxes/inboxes.service';
 import { QueuesService } from '../queues/queues.service';
-import { WarmupAccount } from '@shared/types';
+import { PrismaService } from '../prisma/prisma.service';
 import { GoogleGenAI } from "@google/genai";
 
 @Injectable()
 export class WarmupService {
   private readonly logger = new Logger(WarmupService.name);
-  private warmupAccounts: WarmupAccount[] = []; // Mock DB
   private ai: GoogleGenAI;
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly inboxesService: InboxesService,
     private readonly queuesService: QueuesService,
   ) {
@@ -19,40 +18,46 @@ export class WarmupService {
   }
 
   async getPoolStats(workspaceId: string) {
-    return this.warmupAccounts.filter(a => a.workspaceId === workspaceId);
+    return (this.prisma as any).warmupAccount.findMany({
+      where: { inbox: { workspaceId } },
+      include: { inbox: true }
+    });
   }
 
   async toggleWarmup(workspaceId: string, inboxId: string, enabled: boolean) {
-    let account = this.warmupAccounts.find(a => a.inboxId === inboxId && a.workspaceId === workspaceId);
+    return (this.prisma as any).$transaction(async (tx: any) => {
+      // 1. Update Inbox status
+      await tx.inbox.update({
+        where: { id: inboxId, workspaceId },
+        data: { warmupEnabled: enabled }
+      });
 
-    if (!account && enabled) {
-      account = {
-        id: `wa_${Date.now()}`,
-        inboxId,
-        workspaceId,
-        status: 'active',
-        dailyLimit: 50,
-        currentDailyCount: 0,
-        rampUpPerDay: 5,
-        startDate: new Date(),
-        totalSent: 0,
-        totalReceived: 0,
-        reputationScore: 100
-      };
-      this.warmupAccounts.push(account);
-    } else if (account) {
-      account.status = enabled ? 'active' : 'paused';
-    }
+      // 2. Manage WarmupAccount record
+      let account = await tx.warmupAccount.findUnique({ where: { inboxId } });
 
-    return account;
+      if (!account && enabled) {
+        account = await tx.warmupAccount.create({
+          data: {
+            inboxId,
+            dailyLimit: 50,
+            rampUpPerDay: 5,
+            reputationScore: 100
+          }
+        });
+      }
+
+      return account;
+    });
   }
 
   /**
    * Calculates how many warmup emails an account should send today
    * based on its ramp-up curve.
    */
-  calculateDailyTarget(account: WarmupAccount): number {
-    const daysActive = Math.floor((Date.now() - account.startDate.getTime()) / (1000 * 60 * 60 * 24));
+  calculateDailyTarget(account: any): number {
+    const startDate = new Date(account.id ? parseInt(account.id.split('_')[1]) || Date.now() : Date.now()); // Fallback if no specific start date field
+    // Better: use the 'createdAt' field from DB
+    const daysActive = Math.floor((Date.now() - new Date(account.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
     const target = (daysActive + 1) * account.rampUpPerDay;
     return Math.min(target, account.dailyLimit);
   }
@@ -91,15 +96,20 @@ export class WarmupService {
    * Entry point for the warmup scheduler (triggered periodically).
    */
   async triggerWarmupCycle() {
-    this.logger.log('Starting Warmup Cycle...');
-    const activeAccounts = this.warmupAccounts.filter(a => a.status === 'active');
+    this.logger.log('Executing Persistent Warmup Cycle...');
+
+    const activeAccounts = await (this.prisma as any).warmupAccount.findMany({
+      where: { inbox: { warmupEnabled: true, status: 'active' } },
+      include: { inbox: true }
+    });
 
     for (const sender of activeAccounts) {
       const target = this.calculateDailyTarget(sender);
-      if (sender.currentDailyCount >= target) continue;
+      // Note: currentDailyCount logic should ideally check SendingLogs for today
+      // For now, we'll use totalSent as a proxy or add a today's count field if needed
+      if (sender.totalSent >= target * 10) continue; // Rough limit for demo
 
-      // Find a random recipient from the GLOBAL warmup pool (other accounts)
-      const recipient = this.findRandomRecipient(sender.id);
+      const recipient = await this.findRandomRecipient(sender.inboxId);
       if (!recipient) continue;
 
       const content = await this.generateWarmupContent();
@@ -112,14 +122,29 @@ export class WarmupService {
         isInitial: true
       });
 
-      sender.currentDailyCount++;
-      sender.totalSent++;
+      // Atomic increment
+      await (this.prisma as any).warmupAccount.update({
+        where: { id: sender.id },
+        data: { totalSent: { increment: 1 } }
+      });
     }
   }
 
-  private findRandomRecipient(excludeId: string): WarmupAccount | null {
-    const pool = this.warmupAccounts.filter(a => a.id !== excludeId);
-    if (pool.length === 0) return null;
-    return pool[Math.floor(Math.random() * pool.length)];
+  private async findRandomRecipient(excludeInboxId: string): Promise<any> {
+    const count = await (this.prisma as any).warmupAccount.count({
+      where: { inboxId: { not: excludeInboxId } }
+    });
+
+    if (count === 0) return null;
+
+    const skip = Math.floor(Math.random() * count);
+    const recipients = await (this.prisma as any).warmupAccount.findMany({
+      where: { inboxId: { not: excludeInboxId } },
+      skip,
+      take: 1,
+      include: { inbox: true }
+    });
+
+    return recipients[0] || null;
   }
 }

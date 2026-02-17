@@ -1,7 +1,8 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProviderAdapter, ProviderHealth } from './provider.adapter';
 import * as nodemailer from 'nodemailer';
+import * as imaps from 'imap-simple';
+import { simpleParser } from 'mailparser';
 
 @Injectable()
 export class SmtpAdapter implements EmailProviderAdapter {
@@ -9,14 +10,20 @@ export class SmtpAdapter implements EmailProviderAdapter {
 
   async validateCredentials(credentials: any): Promise<boolean> {
     try {
+      const auth: any = credentials.accessToken ? {
+        type: 'OAuth2',
+        user: credentials.smtpUser,
+        accessToken: credentials.accessToken,
+      } : {
+        user: credentials.smtpUser,
+        pass: credentials.smtpPass,
+      };
+
       const transporter = nodemailer.createTransport({
-        host: credentials.smtpHost,
-        port: credentials.smtpPort,
-        secure: credentials.smtpPort === 465,
-        auth: {
-          user: credentials.smtpUser,
-          pass: credentials.smtpPass,
-        },
+        host: credentials.smtpHost || (credentials.accessToken ? 'smtp.gmail.com' : undefined),
+        port: credentials.smtpPort || 465,
+        secure: credentials.smtpPort === 465 || !credentials.smtpPort,
+        auth,
         tls: { rejectUnauthorized: false }
       });
       await transporter.verify();
@@ -28,11 +35,20 @@ export class SmtpAdapter implements EmailProviderAdapter {
   }
 
   async sendEmail(credentials: any, payload: any): Promise<{ messageId: string }> {
+    const auth: any = credentials.accessToken ? {
+      type: 'OAuth2',
+      user: credentials.smtpUser,
+      accessToken: credentials.accessToken,
+    } : {
+      user: credentials.smtpUser,
+      pass: credentials.smtpPass,
+    };
+
     const transporter = nodemailer.createTransport({
-      host: credentials.smtpHost,
-      port: credentials.smtpPort,
-      secure: credentials.smtpPort === 465,
-      auth: { user: credentials.smtpUser, pass: credentials.smtpPass },
+      host: credentials.smtpHost || (credentials.accessToken ? 'smtp.gmail.com' : undefined),
+      port: credentials.smtpPort || 465,
+      secure: credentials.smtpPort === 465 || !credentials.smtpPort,
+      auth,
     });
 
     try {
@@ -56,29 +72,86 @@ export class SmtpAdapter implements EmailProviderAdapter {
 
   /**
    * Fetches replies from the IMAP server.
-   * Logic: Look for messages SINCE lastCheck that are UNSEEN or have our custom header.
+   * Logic: Look for messages SINCE lastCheck that contain our custom header.
    */
   async fetchReplies(credentials: any, lastCheck: Date): Promise<any[]> {
-    this.logger.log(`Scanning IMAP stream for ${credentials.imapUser} since ${lastCheck.toISOString()}`);
-    
-    /**
-     * PRODUCTION IMPLEMENTATION LOGIC:
-     * In a deployed environment, we use 'imap-simple'.
-     * 1. Connect to credentials.imapHost
-     * 2. Search criteria: ['UNSEEN', ['SINCE', lastCheck]]
-     * 3. Map messages by extracting 'X-SkyReach-Log-ID' from headers
-     */
-    
-    // Mocking the data structure returned by a real IMAP fetch
-    // to ensure the rest of the pipeline is hardened.
-    return []; 
+    this.logger.log(`Scanning IMAP stream for ${credentials.imapUser || credentials.smtpUser} since ${lastCheck.toISOString()}`);
+
+    const config: any = {
+      imap: {
+        user: credentials.imapUser || credentials.smtpUser,
+        host: credentials.imapHost || (credentials.accessToken ? 'imap.gmail.com' : undefined),
+        port: credentials.imapPort || 993,
+        tls: true,
+        authTimeout: 10000,
+        tlsOptions: { rejectUnauthorized: false }
+      }
+    };
+
+    if (credentials.accessToken) {
+      config.imap.xoauth2 = credentials.accessToken;
+    } else {
+      config.imap.password = credentials.imapPass || credentials.smtpPass;
+    }
+
+    let connection;
+    try {
+      connection = await imaps.connect(config);
+      await connection.openBox('INBOX');
+
+      // Search for messages since lastCheck. 
+      // Note: IMAP search only supports Date (day resolution) for 'SINCE'.
+      // We'll filter precisely in JS afterwards if needed.
+      const searchCriteria = [['SINCE', lastCheck]];
+      const fetchOptions = {
+        bodies: ['HEADER', 'TEXT'],
+        struct: true
+      };
+
+      const messages = await connection.search(searchCriteria, fetchOptions);
+      const replies = [];
+
+      for (const item of messages) {
+        const allHeaderPart = item.parts.find(part => part.which === 'HEADER');
+        const id = item.attributes.uid;
+        const idHeader = allHeaderPart.body['message-id'];
+
+        // Optimization: Use simple-parser for robust body/header extraction
+        const fullMessage = item.parts.map(p => p.body).join('\n');
+        const parsed = await simpleParser(fullMessage);
+
+        const skyreachLogId = parsed.headers.get('x-skyreach-log-id') ||
+          parsed.headers.get('references')?.toString().match(/<([^@]+)@skyreach\.ai>/)?.[1];
+
+        if (skyreachLogId) {
+          replies.push({
+            messageId: parsed.messageId || idHeader?.[0] || id.toString(),
+            from: parsed.from?.value[0]?.address,
+            subject: parsed.subject,
+            body: parsed.text || parsed.html,
+            headers: {
+              'x-skyreach-log-id': skyreachLogId
+            },
+            receivedAt: parsed.date || item.attributes.date
+          });
+        }
+      }
+
+      await connection.end();
+      return replies;
+
+    } catch (err) {
+      this.logger.error(`IMAP Sync Failure for ${config.imap.user}: ${err.message}`);
+      if (connection) await connection.end();
+      return [];
+    }
   }
 
   async healthCheck(credentials: any): Promise<ProviderHealth> {
     const isValid = await this.validateCredentials(credentials);
-    return { 
-      status: isValid ? 'active' : 'disconnected', 
-      score: isValid ? 100 : 0 
+    return {
+      status: isValid ? 'active' : 'disconnected',
+      score: isValid ? 100 : 0
     };
   }
 }

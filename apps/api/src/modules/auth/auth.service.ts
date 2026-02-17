@@ -2,6 +2,8 @@
 import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
+import { InboxesService } from '../inboxes/inboxes.service';
+import { InboxProvider } from '../inboxes/dto/inbox.dto';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { SecurityService } from '../security/security.service';
 import { ConfigService } from '@nestjs/config';
@@ -16,16 +18,17 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly workspacesService: WorkspacesService,
+    private readonly inboxesService: InboxesService,
     private readonly securityService: SecurityService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async register(dto: RegisterDto) {
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) throw new ConflictException('User already exists');
 
     const passwordHash = await this.securityService.hashPassword(dto.password);
-    
+
     const user = await this.usersService.create({
       ...dto,
       passwordHash,
@@ -53,7 +56,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    
+
     const isValid = await this.securityService.verifyPassword(dto.password, user.passwordHash);
     if (!isValid) throw new UnauthorizedException('Invalid credentials');
 
@@ -76,7 +79,7 @@ export class AuthService {
 
   async handleGoogleExchange(code: string, workspaceId: string, userId: string) {
     this.logger.log(`Exchanging Google code for tokens: workspace ${workspaceId}`);
-    
+
     try {
       const response = await axios.post('https://oauth2.googleapis.com/token', {
         code,
@@ -87,11 +90,28 @@ export class AuthService {
       });
 
       const { access_token, refresh_token, expires_in } = response.data;
-      
-      // In production, you would fetch the user's email from Google here
-      // and then call inboxesService.create() with encrypted credentials.
-      this.logger.debug(`Google credentials received. Refresh token: ${!!refresh_token}`);
-      
+
+      // Fetch User Profile
+      const profile = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+
+      const { email, name } = profile.data;
+
+      // Create Inbox Automatically
+      await this.inboxesService.create(workspaceId, {
+        email,
+        fromName: name,
+        provider: InboxProvider.GOOGLE,
+        credentials: {
+          accessToken: access_token,
+          refreshToken: refresh_token,
+          expiresAt: Math.floor(Date.now() / 1000) + expires_in,
+        } as any
+      });
+
+      this.logger.log(`Google Inbox Fulfillment Complete: ${email}`);
+
       return { access_token, refresh_token };
     } catch (err) {
       this.logger.error(`Google Token Exchange Failed: ${err.message}`);
@@ -100,25 +120,62 @@ export class AuthService {
   }
 
   async handleOutlookExchange(code: string, workspaceId: string, userId: string) {
-    // Similar implementation for Microsoft Graph
-    return { success: true };
+    this.logger.log(`Exchanging Outlook code for tokens: workspace ${workspaceId}`);
+
+    try {
+      const response = await axios.post(`https://login.microsoftonline.com/common/oauth2/v2.0/token`, new URLSearchParams({
+        client_id: this.configService.get('OUTLOOK_CLIENT_ID'),
+        client_secret: this.configService.get('OUTLOOK_CLIENT_SECRET'),
+        code,
+        redirect_uri: `${this.configService.get('API_URL')}/api/v1/auth/outlook/callback`,
+        grant_type: 'authorization_code',
+      }).toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+
+      const { access_token, refresh_token, expires_in } = response.data;
+
+      // Fetch Profile
+      const profile = await axios.get('https://graph.microsoft.com/v1.0/me', {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+
+      const { mail, userPrincipalName, displayName } = profile.data;
+      const email = mail || userPrincipalName;
+
+      await this.inboxesService.create(workspaceId, {
+        email,
+        fromName: displayName,
+        provider: InboxProvider.OUTLOOK,
+        credentials: {
+          accessToken: access_token,
+          refreshToken: refresh_token,
+          expiresAt: Math.floor(Date.now() / 1000) + expires_in,
+        } as any
+      });
+
+      return { access_token, refresh_token };
+    } catch (err) {
+      this.logger.error(`Outlook Token Exchange Failed: ${err.message}`);
+      throw new UnauthorizedException('Outlook authentication failed');
+    }
   }
 
   private generateJwt(userId: string, workspaceId?: string): string {
     const secret = this.configService.get('JWT_SECRET');
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({ 
-      sub: userId, 
+    const payload = Buffer.from(JSON.stringify({
+      sub: userId,
       workspaceId,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 7) // 7 days
     })).toString('base64url');
-    
+
     const signature = crypto
       .createHmac('sha256', secret)
       .update(`${header}.${payload}`)
       .digest('base64url');
-      
+
     return `${header}.${payload}.${signature}`;
   }
 }

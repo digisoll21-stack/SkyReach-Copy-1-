@@ -47,13 +47,24 @@ export class SendingProcessor implements OnModuleInit {
         return;
       }
 
-      // CRITICAL: Check if lead is unsubscribed before sending
-      const lead = await (this.prisma as any).lead.findUnique({ where: { id: leadId } });
-      if (!lead || lead.status === LeadStatus.UNSUBSCRIBED) {
-        this.logger.warn(`Lead ${leadId} is unsubscribed or not found. Skipping job ${job.id}`);
+      // CRITICAL: Check if lead is unsubscribed or replied before sending
+      const lead = await (this.prisma as any).lead.findUnique({
+        where: { id: leadId },
+        include: { campaign: true }
+      });
+
+      const isUnsubscribed = lead?.status === LeadStatus.UNSUBSCRIBED;
+      const isReplied = lead?.status === LeadStatus.REPLIED;
+      const stopOnReply = lead?.campaign?.settings?.stopOnReply ?? true;
+
+      if (!lead || isUnsubscribed || (isReplied && stopOnReply)) {
+        this.logger.warn(`Lead ${leadId} skipped (Status: ${lead?.status}, StopOnReply: ${stopOnReply})`);
         await (this.prisma as any).sendingLog.update({
           where: { id: logId },
-          data: { status: 'skipped', errorMessage: 'Lead unsubscribed' }
+          data: {
+            status: 'skipped',
+            errorMessage: isUnsubscribed ? 'Lead unsubscribed' : 'Lead already replied'
+          }
         });
         return;
       }

@@ -8,6 +8,7 @@ export enum JobType {
   WARMUP_EMAIL = 'warmupEmail',
   FETCH_REPLIES = 'fetchReplies',
   TRACK_OPEN = 'trackOpen',
+  SEQUENCE_CAMPAIGN = 'sequenceCampaign',
 }
 
 @Injectable()
@@ -24,18 +25,18 @@ export class QueuesService implements OnModuleInit {
     removeOnFail: false,
   };
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   onModuleInit() {
     const redisUrl = this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379';
     const connection = { url: redisUrl };
 
-    const queueNames = ['email_sending_queue', 'warmup_queue', 'reply_fetch_queue', 'tracking_queue'];
-    
+    const queueNames = ['email_sending_queue', 'warmup_queue', 'reply_fetch_queue', 'tracking_queue', 'campaign_sequencing_queue'];
+
     for (const name of queueNames) {
-      const queue = new Queue(name, { 
+      const queue = new Queue(name, {
         connection,
-        defaultJobOptions: this.defaultJobOptions 
+        defaultJobOptions: this.defaultJobOptions
       });
       this.queues.set(name, queue);
       this.logger.log(`Initialized BullMQ Queue: ${name}`);
@@ -43,6 +44,9 @@ export class QueuesService implements OnModuleInit {
 
     // Schedule Recurring Reply Fetching
     this.addReplyFetchJob({ workspaceId: 'all' });
+
+    // Schedule Recurring Campaign Sequencing
+    this.addSequencingJob();
   }
 
   async addSendingJob(data: any, delayMs: number = 0) {
@@ -60,6 +64,14 @@ export class QueuesService implements OnModuleInit {
     if (!queue) return;
     return queue.add(JobType.FETCH_REPLIES, data, {
       repeat: { pattern: '*/15 * * * *' } // Every 15 minutes
+    });
+  }
+
+  async addSequencingJob() {
+    const queue = this.queues.get('campaign_sequencing_queue');
+    if (!queue) return;
+    return queue.add(JobType.SEQUENCE_CAMPAIGN, {}, {
+      repeat: { pattern: '*/30 * * * *' } // Every 30 minutes
     });
   }
 
