@@ -23,15 +23,25 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
           async $allOperations({ model, operation, args, query }) {
             const workspaceId = tenantContext.getWorkspaceId();
 
-            // Bypass models for authentication and global ops
-            const bypassModels = ['User', 'Workspace', 'Member'];
-            if (bypassModels.includes(model) || !workspaceId) {
+            // CRITICAL FIX: Only inject workspaceId into models that actually have the field
+            const modelsWithWorkspace = ['Inbox', 'Domain', 'Lead', 'Campaign', 'SendingLog', 'ReplyLog', 'Member'];
+            const bypassModels = ['User', 'Workspace'];
+
+            if (bypassModels.includes(model) || !modelsWithWorkspace.includes(model) || !workspaceId) {
               return query(args);
             }
 
-            // Enforce workspace isolation for all other operations
-            const anyArgs = args as any;
-            if (['findFirst', 'findMany', 'count', 'update', 'delete', 'updateMany', 'deleteMany'].includes(operation)) {
+            // Enforce workspace isolation for all supported operations
+            const anyArgs = args as any || {};
+            anyArgs.where = anyArgs.where || {};
+
+            if (['findFirst', 'findMany', 'findUnique', 'count', 'update', 'delete', 'updateMany', 'deleteMany'].includes(operation)) {
+              anyArgs.where = { ...anyArgs.where, workspaceId };
+            }
+
+            if (operation === 'upsert') {
+              anyArgs.create = { ...anyArgs.create, workspaceId };
+              anyArgs.update = { ...anyArgs.update, workspaceId };
               anyArgs.where = { ...anyArgs.where, workspaceId };
             }
 

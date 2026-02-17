@@ -16,8 +16,8 @@ export class TenantContextService {
   }
 
   setWorkspaceId(id: string) {
-    const context = TenantContextService.storage.getStore() || { workspaceId: null, userId: null };
-    context.workspaceId = id;
+    const context = TenantContextService.storage.getStore();
+    if (context) context.workspaceId = id;
   }
 
   getWorkspaceId(): string | null {
@@ -25,8 +25,8 @@ export class TenantContextService {
   }
 
   setUserId(id: string) {
-    const context = TenantContextService.storage.getStore() || { workspaceId: null, userId: null };
-    context.userId = id;
+    const context = TenantContextService.storage.getStore();
+    if (context) context.userId = id;
   }
 
   getUserId(): string | null {
