@@ -9,9 +9,17 @@ const getBaseURL = () => {
   // 1. Check for explicitly defined environment variable (Enterprise standard)
   let envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
-    // Ensure it ends with /api/v1 for the backend prefixing
-    if (!envUrl.includes('/api/v1')) {
-      envUrl = envUrl.endsWith('/') ? `${envUrl}api/v1` : `${envUrl}/api/v1`;
+    // Remove trailing slash
+    envUrl = envUrl.replace(/\/$/, '');
+
+    // If the user accidentally included /api/v1 or more (like /health), 
+    // we normalize it by stripping everything after /api/v1
+    const apiPrefixIdx = envUrl.indexOf('/api/v1');
+    if (apiPrefixIdx !== -1) {
+      envUrl = envUrl.substring(0, apiPrefixIdx + 7);
+    } else {
+      // Otherwise, ensure it ends with /api/v1
+      envUrl = `${envUrl}/api/v1`;
     }
     return envUrl;
   }
