@@ -72,7 +72,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         break;
       } catch (err) {
         retries--;
-        this.logger.error(`DB Connection failed. Retrying... (${retries} left)`);
+        this.logger.error(`DB Connection failed: ${err.message}. Retrying... (${retries} left)`);
         await new Promise(res => setTimeout(res, 5000));
       }
     }
