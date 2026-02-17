@@ -50,6 +50,15 @@ export class CampaignsController {
     return this.campaignsService.updateSequence(workspaceId, id, dto.steps);
   }
 
+  @Post(':id/sequence')
+  async updateSequencePost(
+    @CurrentWorkspace() workspaceId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateSequenceDto
+  ) {
+    return this.campaignsService.updateSequence(workspaceId, id, dto.steps);
+  }
+
   @Delete(':id')
   async remove(@CurrentWorkspace() workspaceId: string, @Param('id') id: string) {
     return this.campaignsService.remove(workspaceId, id);

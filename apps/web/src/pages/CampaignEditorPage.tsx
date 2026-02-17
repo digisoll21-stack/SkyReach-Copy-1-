@@ -225,7 +225,7 @@ const CampaignEditorPage: React.FC<{ theme: 'ethereal' | 'glass' }> = ({ theme }
       setSettings({ ...settings, ...data.settings });
       setSelectedInboxes(data.settings?.inboxIds || []);
 
-      if (data.sequences && data.sequences.length > 0) {
+      if (data.sequences && Array.isArray(data.sequences) && data.sequences.length > 0) {
         setSteps(data.sequences.map((s: any) => ({
           id: s.id, order: s.order, subject: s.subject, body: s.body,
           delayDays: s.delayDays, waitMinutes: s.waitMinutes || 0, specificStartTime: s.specificStartTime || ''
@@ -234,8 +234,9 @@ const CampaignEditorPage: React.FC<{ theme: 'ethereal' | 'glass' }> = ({ theme }
         setSteps([{ id: `s_${Date.now()}`, order: 1, subject: '', body: '', delayDays: 0, waitMinutes: 0 }]);
       }
 
-      const { data: leads } = await apiClient.get(`/leads?campaignId=${id}`);
-      setLeadsCount(leads?.length || 0);
+      const { data: leadsResponse } = await apiClient.get(`/leads?campaignId=${id}`);
+      const leads = Array.isArray(leadsResponse) ? leadsResponse : (leadsResponse?.data || []);
+      setLeadsCount(leads.length || 0);
 
     } catch (err) { console.error('Fetch failed'); }
     finally { setIsLoading(false); }
@@ -304,8 +305,9 @@ const CampaignEditorPage: React.FC<{ theme: 'ethereal' | 'glass' }> = ({ theme }
 
       // Basic Uniqueness Check (simplified for frontend)
       if (id === 'new' && !isAuto) {
-        const { data: existing } = await apiClient.get('/campaigns');
-        if (existing.some((c: any) => c.name.toLowerCase() === campaignName.toLowerCase())) {
+        const { data: response } = await apiClient.get('/campaigns');
+        const campaigns = Array.isArray(response) ? response : (response?.data || []);
+        if (campaigns.some((c: any) => c.name.toLowerCase() === campaignName.toLowerCase())) {
           alert('A protocol with this designation already exists in your fleet.');
           if (!isAuto) setIsSaving(false);
           return;
