@@ -22,6 +22,7 @@ import { SecurityModule } from './modules/security/security.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { TenantContextService } from './common/context/tenant-context.service';
 import { HealthController } from './modules/health/health.controller';
+import { AppController } from './app.controller';
 import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
@@ -50,7 +51,7 @@ import { AdminModule } from './modules/admin/admin.module';
       limit: 100,
     }]),
   ],
-  controllers: [HealthController],
+  controllers: [AppController, HealthController],
   providers: [TenantContextService],
   exports: [TenantContextService],
 })
