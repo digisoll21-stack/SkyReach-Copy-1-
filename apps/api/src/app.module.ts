@@ -22,12 +22,14 @@ import { SecurityModule } from './modules/security/security.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { TenantContextService } from './common/context/tenant-context.service';
 import { HealthController } from './modules/health/health.controller';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
     SecurityModule,
+    AdminModule,
     AuthModule,
     UsersModule,
     WorkspacesModule,

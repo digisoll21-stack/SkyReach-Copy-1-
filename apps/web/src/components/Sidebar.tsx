@@ -1,90 +1,145 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Send, Users, Inbox, Mail, Flame,
-  TestTube2, BarChart3, Bell, History, Settings, Zap, X
+  Leaf,
+  LayoutDashboard,
+  Megaphone,
+  Users,
+  Mail,
+  Inbox,
+  Flame,
+  BarChart3,
+  Settings,
+  Search,
+  CheckCircle,
+  XCircle,
+  History,
+  Bell,
+  HelpCircle
 } from 'lucide-react';
 
 interface SidebarProps {
-  workspace: { id: string; name: string };
   theme: 'ethereal' | 'glass';
+  workspace: { id: string; name: string };
   onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ workspace, theme, onClose }) => {
-  const isEthereal = theme === 'ethereal';
+const Sidebar: React.FC<SidebarProps> = ({ theme, workspace, onClose }) => {
+  const location = useLocation();
 
-  const navItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Campaigns', path: '/campaigns', icon: Send },
-    { name: 'Lead CRM', path: '/leads', icon: Users },
-    { name: 'Master Inbox', path: '/replies', icon: Inbox },
-    { name: 'Email Accounts', path: '/inboxes', icon: Mail },
-    { name: 'Warmup', path: '/warmup', icon: Flame },
-    { name: 'Deliverability Lab', path: '/lab', icon: TestTube2 },
-    { name: 'Analytics', path: '/analytics', icon: BarChart3 },
-    { name: 'Notifications', path: '/notifications', icon: Bell },
-    { name: 'Audit Logs', path: '/audit-logs', icon: History },
+  const sidebarItems = [
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+    { icon: Megaphone, label: 'Campaigns', path: '/campaigns' },
+    { icon: Users, label: 'Leads', path: '/leads' },
+    { icon: Mail, label: 'Smart Inbox', path: '/replies' },
+    { icon: Inbox, label: 'Email Accounts', path: '/inboxes' },
+    { icon: Flame, label: 'Warmup', path: '/warmup' },
+    { icon: BarChart3, label: 'Analytics', path: '/analytics' },
+    { icon: History, label: 'Audit Logs', path: '/audit-logs' },
+    { icon: Bell, label: 'Notifications', path: '/notifications' },
+    { icon: HelpCircle, label: 'Support', path: '/support' },
+    { icon: Settings, label: 'Settings', path: '/settings' },
   ];
 
   return (
-    <aside className="w-72 h-screen flex flex-col transition-all duration-500 py-4 px-4 overflow-hidden">
-      <div className="flex-1 flex flex-col glass-surface rounded-[2.5rem] overflow-hidden">
-        <div className="p-8 flex items-center justify-between">
-          <div className="flex items-center space-x-3.5">
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg transition-all ${isEthereal ? 'bg-gradient-to-br from-[#10b981] to-[#059669]' : 'bg-[#00E5FF]'}`}>
-              <Zap className={`w-6 h-6 ${isEthereal ? 'text-white' : 'text-slate-900'} fill-current`} />
-            </div>
-            <span className={`text-2xl font-black font-heading tracking-tighter ${isEthereal ? 'text-[#064e3b]' : 'text-white'}`}>SkyReach</span>
-          </div>
-          <button onClick={onClose} className="lg:hidden p-2 text-slate-400">
-            <X size={24} />
-          </button>
+    <aside className={`w-64 h-full flex flex-col transition-all duration-300 relative z-50
+      ${theme === 'glass'
+        ? 'bg-slate-900/80 backdrop-blur-xl border-r border-slate-800'
+        : 'bg-white/80 backdrop-blur-xl border-r border-slate-200 shadow-xl'
+      }
+    `}>
+      <div className="p-6 flex items-center gap-3">
+        <div className={`p-2 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 shadow-lg`}>
+          <Leaf className="text-white w-6 h-6" />
         </div>
+        <div>
+          <h1 className={`font-bold text-xl tracking-tight font-heading
+            ${theme === 'glass' ? 'text-white' : 'text-slate-800'}
+          `}>
+            SkyReach
+          </h1>
+          <p className={`text-xs font-medium
+             ${theme === 'glass' ? 'text-slate-400' : 'text-slate-500'}
+          `}>
+            Enterprise
+          </p>
+        </div>
+      </div>
 
-        <nav className="flex-1 px-5 py-4 space-y-1.5 overflow-y-auto">
-          {navItems.map((item) => (
+      <div className="px-4 mb-4">
+        <div className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all
+          ${theme === 'glass'
+            ? 'bg-slate-800/50 border-slate-700 hover:bg-slate-800 text-slate-200'
+            : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
+          }
+        `}>
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm
+              ${theme === 'glass' ? 'bg-slate-700' : 'bg-slate-200'}
+            `}>
+              {workspace.name.substring(0, 1)}
+            </div>
+            <span className="font-medium text-sm truncate max-w-[100px]">{workspace.name}</span>
+          </div>
+          <svg className="w-4 h-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </div>
+
+      <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
+        {sidebarItems.map((item) => {
+          const isActive = location.pathname.startsWith(item.path);
+          return (
             <NavLink
               key={item.path}
               to={item.path}
               onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center px-5 py-3.5 rounded-2xl transition-all duration-300 group font-bold text-sm ${isActive
-                  ? (isEthereal ? 'bg-[#10b981]/15 text-[#064e3b] shadow-sm' : 'bg-[#00E5FF]/20 text-[#00E5FF]')
-                  : (isEthereal ? 'text-slate-500 hover:bg-[#10b981]/5 hover:text-[#064e3b]' : 'text-slate-400 hover:bg-white/5 hover:text-white')
-                }`
-              }
+              className={({ isActive }) => `
+                flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
+                ${isActive
+                  ? (theme === 'glass'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
+                    : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200'
+                  )
+                  : (theme === 'glass'
+                    ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                  )
+                }
+              `}
             >
-              <item.icon className="w-5 h-5 mr-4 transition-transform duration-300 group-hover:scale-110" />
-              {item.name}
+              <item.icon className={`w-5 h-5 transition-transform group-hover:scale-110 ${isActive ? 'animate-pulse-slow' : ''}`} />
+              <span className="font-medium">{item.label}</span>
             </NavLink>
-          ))}
-        </nav>
+          );
+        })}
+      </nav>
 
-        <div className={`px-6 py-8 mt-auto ${isEthereal ? 'border-t border-[#10b981]/10 bg-[#10b981]/5' : 'border-t border-white/5 bg-white/5'}`}>
-          <div className="mb-6 px-1">
-            <div className="flex items-center justify-between mb-3">
-              <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isEthereal ? 'text-slate-400' : 'text-slate-500'}`}>Workspace Health</span>
-              <span className={`text-[11px] font-black ${isEthereal ? 'text-[#10b981]' : 'text-[#00E5FF]'}`}>98%</span>
+      <div className={`p-4 border-t ${theme === 'glass' ? 'border-slate-800' : 'border-slate-200'}`}>
+        <div className={`rounded-xl p-4 relative overflow-hidden group
+           ${theme === 'glass' ? 'bg-gradient-to-br from-indigo-900/50 to-purple-900/50 border border-indigo-500/20' : 'bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100'}
+        `}>
+          <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2"></div>
+          <div className="relative z-10">
+            <h4 className={`text-sm font-bold mb-1 ${theme === 'glass' ? 'text-white' : 'text-indigo-900'}`}>
+              Pro Plan
+            </h4>
+            <p className={`text-xs mb-3 ${theme === 'glass' ? 'text-indigo-200' : 'text-indigo-600'}`}>
+              2,450 / 5,000 emails
+            </p>
+            <div className={`h-1.5 rounded-full overflow-hidden ${theme === 'glass' ? 'bg-black/20' : 'bg-indigo-100'}`}>
+              <div className="h-full bg-gradient-to-r from-indigo-400 to-purple-400 w-[55%] rounded-full"></div>
             </div>
-            <div className={`w-full h-2 rounded-full overflow-hidden ${isEthereal ? 'bg-white shadow-inner' : 'bg-slate-800'}`}>
-              <div className={`h-full w-[98%] transition-all duration-1000 ${isEthereal ? 'bg-[#10b981]' : 'bg-[#00E5FF] shadow-[0_0_10px_rgba(0,229,255,0.4)]'}`}></div>
-            </div>
+            <button className={`mt-3 w-full py-1.5 text-xs font-bold rounded-lg transition-colors
+              ${theme === 'glass'
+                ? 'bg-white/10 hover:bg-white/20 text-white'
+                : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700'
+              }
+            `}>
+              Upgrade Limit
+            </button>
           </div>
-
-          <NavLink
-            to="/settings"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center px-5 py-3.5 rounded-2xl transition-all duration-200 group font-bold text-sm ${isActive
-                ? (isEthereal ? 'bg-[#10b981]/15 text-[#064e3b]' : 'bg-[#00E5FF]/20 text-[#00E5FF]')
-                : (isEthereal ? 'text-slate-500 hover:text-[#064e3b]' : 'text-slate-400 hover:text-white')
-              }`
-            }
-          >
-            <Settings className="w-5 h-5 mr-4 group-hover:rotate-45 transition-transform duration-500" />
-            Settings
-          </NavLink>
         </div>
       </div>
     </aside>

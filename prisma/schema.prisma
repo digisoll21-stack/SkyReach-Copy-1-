@@ -7,6 +7,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum Role {
+  USER
+  SUPER_ADMIN
+}
+
 model User {
   id            String     @id @default(uuid())
   email         String     @unique
@@ -15,6 +20,8 @@ model User {
   lastName      String
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+  role          Role       @default(USER)
+  isBanned      Boolean    @default(false)
   memberships   Member[]
 }
 
@@ -35,10 +42,12 @@ model Workspace {
 
 model Member {
   id          String    @id @default(uuid())
-  userId      String
+  userId      String?
   workspaceId String
   role        String    @default("member")
-  user        User      @relation(fields: [userId], references: [id])
+  inviteToken String?   @unique
+  inviteExpires DateTime?
+  user        User?     @relation(fields: [userId], references: [id])
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
   @@unique([userId, workspaceId])
 }
@@ -51,6 +60,7 @@ model Domain {
   spfValid       Boolean   @default(false)
   dkimValid      Boolean   @default(false)
   dmarcValid     Boolean   @default(false)
+  isTracking     Boolean   @default(false)
   lastVerifiedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
