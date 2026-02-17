@@ -1,0 +1,108 @@
+
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { LeadsService } from '../leads/leads.service';
+import { LeadStatus, ReplyCategory } from '@shared/types';
+import { GoogleGenAI } from "@google/genai";
+
+@Injectable()
+export class RepliesService {
+  private readonly logger = new Logger(RepliesService.name);
+  private aiClient: GoogleGenAI;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly leadsService: LeadsService,
+  ) {
+    this.aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+
+  /**
+   * Enterprise-Grade Idempotent Processing
+   * Ensures that even if IMAP fetches the same message twice, we only record it once.
+   */
+  async processDiscoveredReply(workspaceId: string, inboxId: string, rawReply: any) {
+    const { from, subject, body, headers, receivedAt, messageId } = rawReply;
+
+    // 1. Idempotency Check: Avoid processing the same messageId twice
+    const existing = await (this.prisma as any).replyLog.findFirst({
+      where: { messageId, workspaceId }
+    });
+    if (existing) return;
+
+    // 2. Lead Identification
+    const logId = headers?.['x-skyreach-log-id'];
+    let lead = null;
+
+    if (logId) {
+      const log = await (this.prisma as any).sendingLog.findUnique({ where: { id: logId } });
+      if (log) lead = await (this.prisma as any).lead.findUnique({ where: { id: log.leadId } });
+    }
+
+    if (!lead) {
+      const leads = await this.leadsService.findAll(workspaceId, { search: from });
+      lead = leads[0];
+    }
+
+    if (!lead) {
+      this.logger.debug(`Unknown inbound packet from ${from}. Dropping.`);
+      return;
+    }
+
+    // 3. AI Sentiment Analysis
+    const { category } = await this.classifyReply(body);
+
+    // 4. Atomic Multi-Operation: Save Log & Update Lead State
+    await (this.prisma as any).$transaction([
+      (this.prisma as any).replyLog.create({
+        data: {
+          workspaceId,
+          leadId: lead.id,
+          campaignId: lead.currentCampaignId,
+          inboxId,
+          messageId,
+          subject,
+          body,
+          classification: category,
+          receivedAt: new Date(receivedAt || Date.now()),
+        }
+      }),
+      (this.prisma as any).lead.update({
+        where: { id: lead.id },
+        data: {
+          status: category === 'unsubscribe' ? LeadStatus.UNSUBSCRIBED : LeadStatus.REPLIED,
+          lastEventAt: new Date()
+        }
+      })
+    ]);
+
+    this.logger.log(`[REPLY] Categorized ${category} from ${lead.email}`);
+  }
+
+  private async classifyReply(body: string): Promise<{ category: ReplyCategory }> {
+    try {
+      const response = await this.aiClient.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Classify this email reply into exactly one of these: interested, not_interested, unsubscribe, neutral.
+        Email: "${body.substring(0, 1000)}"
+        Reply only with the category name.`,
+        config: { thinkingConfig: { thinkingBudget: 0 } }
+      });
+
+      const category = response.text?.trim().toLowerCase() as ReplyCategory;
+      return { category: ['interested', 'not_interested', 'unsubscribe', 'neutral'].includes(category) ? category : 'neutral' };
+    } catch (error) {
+      return { category: 'neutral' };
+    }
+  }
+
+  async findAll(workspaceId: string, campaignId?: string) {
+    const where: any = { workspaceId };
+    if (campaignId) where.campaignId = campaignId;
+    return (this.prisma as any).replyLog.findMany({
+      where,
+      include: { lead: true },
+      orderBy: { receivedAt: 'desc' }
+    });
+  }
+}

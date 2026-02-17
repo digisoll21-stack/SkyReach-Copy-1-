@@ -1,0 +1,179 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  memberships   Member[]
+}
+
+model Workspace {
+  id            String     @id @default(uuid())
+  name          String
+  slug          String     @unique
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  members       Member[]
+  campaigns     Campaign[]
+  inboxes       Inbox[]
+  domains       Domain[]
+  leads         Lead[]
+  sendingLogs   SendingLog[]
+  replyLogs     ReplyLog[]
+}
+
+model Member {
+  id          String    @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        String    @default("member")
+  user        User      @relation(fields: [userId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  @@unique([userId, workspaceId])
+}
+
+model Domain {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  domainName     String
+  isVerified     Boolean   @default(false)
+  spfValid       Boolean   @default(false)
+  dkimValid      Boolean   @default(false)
+  dmarcValid     Boolean   @default(false)
+  lastVerifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id])
+  inboxes        Inbox[]
+}
+
+model Inbox {
+  id               String     @id @default(uuid())
+  workspaceId      String
+  domainId         String
+  email            String     @unique
+  fromName         String?
+  provider         String
+  credentials      String     @db.Text
+  status           String     @default("active")
+  dailyLimit       Int        @default(50)
+  hourlyLimit      Int        @default(12)
+  warmupEnabled    Boolean    @default(false)
+  lastReplyCheckAt DateTime?
+  minDelaySeconds  Int        @default(60)
+  maxDelaySeconds  Int        @default(300)
+  signature        String?    @db.Text
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  workspace        Workspace  @relation(fields: [workspaceId], references: [id])
+  domain           Domain     @relation(fields: [domainId], references: [id])
+  warmupAccount    WarmupAccount?
+  @@index([workspaceId])
+  @@index([status])
+}
+
+model WarmupAccount {
+  id                String    @id @default(uuid())
+  inboxId           String    @unique
+  dailyLimit        Int       @default(50)
+  rampUpPerDay      Int       @default(5)
+  totalSent         Int       @default(0)
+  totalReceived     Int       @default(0)
+  reputationScore   Int       @default(100)
+  inbox             Inbox     @relation(fields: [inboxId], references: [id])
+}
+
+model Lead {
+  id                String     @id @default(uuid())
+  workspaceId       String
+  campaignId        String?
+  email             String
+  firstName         String?
+  lastName          String?
+  company           String?
+  status            String     @default("unassigned")
+  tags              String[]
+  customFields      Json?
+  lastEventAt       DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  workspace         Workspace  @relation(fields: [workspaceId], references: [id])
+  campaign          Campaign?   @relation(fields: [campaignId], references: [id])
+  @@unique([email, campaignId])
+  @@index([workspaceId])
+  @@index([campaignId])
+  @@index([status])
+  @@index([email])
+}
+
+model Campaign {
+  id          String     @id @default(uuid())
+  workspaceId String
+  name        String
+  status      String     @default("draft")
+  settings    Json
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+  sequences   SequenceStep[]
+  leads       Lead[]
+  @@index([workspaceId])
+  @@index([status])
+}
+
+model SequenceStep {
+  id          String    @id @default(uuid())
+  campaignId  String
+  order       Int
+  subject     String
+  body        String    @db.Text
+  delayDays   Int       @default(0)
+  waitMinutes Int       @default(0)
+  scheduledDate DateTime?
+  specificStartTime String? // HH:mm format
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+  @@index([campaignId])
+}
+
+model SendingLog {
+  id          String    @id @default(uuid())
+  workspaceId String
+  campaignId  String
+  inboxId     String
+  leadId      String
+  status      String
+  sentAt      DateTime?
+  errorMessage String?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  @@index([workspaceId, sentAt])
+  @@index([campaignId])
+  @@index([inboxId])
+}
+
+model ReplyLog {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  leadId         String
+  campaignId     String
+  inboxId        String
+  subject        String
+  body           String    @db.Text
+  classification String?
+  receivedAt     DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id])
+  @@index([workspaceId, receivedAt])
+  @@index([campaignId])
+}
