@@ -19,7 +19,22 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1', { exclude: ['/'] });
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        'http://localhost:5173',
+        'http://localhost:3000',
+      ].filter(Boolean);
+
+      // Allow if no origin (e.g. server-side or same-origin) or if it matches allowedOrigins
+      // Or if the origin ends with vercel.app (convenience for the user)
+      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('vercel.app')) {
+        callback(null, true);
+      } else {
+        logger.warn(`Blocked by CORS: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: '*',

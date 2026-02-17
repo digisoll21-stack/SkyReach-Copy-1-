@@ -7,8 +7,14 @@ import axios from 'axios';
  */
 const getBaseURL = () => {
   // 1. Check for explicitly defined environment variable (Enterprise standard)
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl;
+  let envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    // Ensure it ends with /api/v1 for the backend prefixing
+    if (!envUrl.includes('/api/v1')) {
+      envUrl = envUrl.endsWith('/') ? `${envUrl}api/v1` : `${envUrl}/api/v1`;
+    }
+    return envUrl;
+  }
 
   // 2. Fallback for server-side-pre-rendering if needed
   if (typeof window === 'undefined') return 'http://localhost:3000/api/v1';
